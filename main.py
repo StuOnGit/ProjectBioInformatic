@@ -32,6 +32,7 @@ def run_precision_safety_experiment():
     
     model = SiameseTwinNet(input_dim=input_dimension, embedding_dim=embedding_dimension)
     criterion = ContrastiveLoss(margin=1.2)
+    # Coso per ottimizzare dato che potrebbe essere lento
     optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
     
     # Roba per velocizzare e ottimizzare (CPU o GPU)
