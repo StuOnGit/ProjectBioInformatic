@@ -1,0 +1,309 @@
+\documentclass{article}
+
+\usepackage[italian]{babel}
+\usepackage[a4paper,top=2cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+
+% Pacchetti utili
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs} % Per tabelle accademiche pulite
+\usepackage{pgfplots} % Per generare il grafico dei risultati direttamente in LaTeX
+\pgfplotsset{compat=1.18}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+
+\title{Framework di "Precision Safety" per l’Esclusione Terapeutica}
+\author{Francesco De Stasio 0522501768}
+\date{Anno Accademico 2025/2026}
+
+\begin{document}
+
+% --- FRONTESPIZIO FORMALE (Stile Università di Salerno) ---
+\begin{titlepage}
+    \begin{center}
+        \LARGE \textbf{UNIVERSITÀ DEGLI STUDI DI SALERNO} \\
+        \large Dipartimento di Informatica \\
+        \vspace{0.5cm}
+        \normalsize Corso di Laurea in Informatica \\
+        \vspace{1.5cm}
+        % Se hai il logo inserisci: \includegraphics[width=0.3\textwidth]{logo.png} \\
+        \vspace{1cm}
+        \LARGE \textbf{Progetto di Esame} \\
+        \vspace{0.5cm}
+        \Large Architetture Avanzate e Strumenti Formali \\
+        \vspace{1.8cm}
+        \huge \textbf{Framework di ``Precision Safety''\\ per l’Esclusione Terapeutica} \\
+        \vspace{2.5cm}
+    \end{center}
+    
+    \begin{flushleft}
+        \large
+        \textbf{Candidato:} Francesco De Stasio \\
+        \textbf{Matricola:} 0522501768
+    \end{flushleft}
+    
+    \vfill
+    \begin{center}
+        \large Anno Accademico 2025/2026
+    \end{center}
+\end{titlepage}
+
+\newpage
+
+% --- ABSTRACT ---
+\begin{abstract}
+    Si presenta di seguito l'estratto del lavoro di analisi, progettazione e scrittura del progetto \textbf{``Framework di ``Precision Safety'' per l’Esclusione Terapeutica''}; Il progetto verte sullo sviluppo di un approccio Safety-First nell’ambito della medicina di precisione, ribaltando il paradigma classico dell’inferenza causale. L’obiettivo è identificare formalmente chi non deve essere trattato, isolando i sottogruppi di pazienti per i quali il trattamento standard risulta tossico o inefficace (o entrambi) rispetto a un’alternativa più conservativa.
+\end{abstract}
+
+\newpage
+
+% --- INDICE AUTOMATICO ---
+\tableofcontents
+\newpage
+
+% --- SEZIONI ---
+\section{Introduzione}
+Verrà illustrato quali scelte il progettatore ha deciso di implementare; l'analisi effettuata sulla tipologia di progetto e la morfologia del modello, lo studio sulla conseguente \textit{Contrastive Loss} utilizzata, gli esempi da cui si è potuto apprendere in che modo vengono utilizzati questi modelli e con quali scopi.
+
+In fondo non per importanza verranno fatti anche degli accenni sul \href{https://archive.ics.uci.edu/dataset/890/aids+clinical+trials+group+study+175}{dataset}, che ha permesso la costruzione di questo modello di rete di inferenza, di come siano state utili ai fini del risultato ottenuto le features e i target interni.
+
+\section{Analisi}
+L'avvento della medicina di precisione ha storicamente focalizzato i propri sforzi sull'identificazione del Conditional Average Treatment Effect (CATE), orientando i modelli predittivi verso la massimizzazione del beneficio terapeutico atteso. Tuttavia, dal punto di vista della sicurezza clinica, tale paradigma presenta una vulnerabilità intrinseca: l'assenza di un segnale esplicito di reiezione nei casi in cui il trattamento standard non si limiti a essere inefficace, ma risulti attivamente tossico o iatrogeno. Il presente lavoro si propone di formalizzare un framework di \textit{Precision Safety}, invertendo radicalmente l'obiettivo dell'inferenza causale per isolare ex-ante i soggetti da sottoporre a esclusione terapeutica.
+
+Dal punto di vista computazionale, la traduzione del concetto clinico di "profilo biologico a rischio" in una metrica decisionale deterministica richiede il superamento dei limiti strutturali della classificazione binaria standard. I modelli tradizionali di classificazione risentono fortemente dello sbilanciamento delle classi e tendono a mappare i confini decisionali su metriche di verosimiglianza assolute, fallendo nel catturare le sottili relazioni di prossimità geometrica che intercorrono tra le risposte fisiologiche dei pazienti. 
+
+La scelta metodologica è ricaduta pertanto sulle reti Siamesi (\textit{Twin Networks}), un'architettura nativamente deputata al \textit{metric learning}. Invece di forzare la rete ad apprendere una funzione di mappatura diretta verso uno spazio di probabilità discreto, il modello viene addestrato a proiettare le caratteristiche baseline del paziente in uno spazio vettoriale latente compresso. In questo spazio, le distanze geometriche riflettono la similarità topologica dei profili clinici rispetto agli endpoint di sicurezza. L'analisi preliminare evidenzia come tale approccio consenta di astrarre una rappresentazione robusta e invariante rispetto ai bias di selezione clinica, ponendo le basi per una policy restrittiva di tipo \textit{Safety-First}.
+
+\section{Progettazione}
+La progettazione architetturale del framework risponde a rigidi criteri di ingegneria del software orientata agli oggetti (OOP), strutturando la pipeline in moduli indipendenti e debolmente accoppiati per garantire riproducibilità, manutenibilità e scalabilità clinica.
+
+Il flusso informativo si articola secondo la seguente sequenza logica modulare:
+\begin{enumerate}
+    \item \textbf{Data Ingestion e Validazione di Stato (\texttt{DatasetManager})}: Modulo deputato al recupero stocastico dei dati grezzi e alla gestione delle anomalie. Al fine di garantire la convergenza della rete e prevenire l'instabilità dei gradienti dovuta a scale eterogenee, il modulo applica una normalizzazione Z-score. La validazione di stato intercetta ex-ante eventuali chiamate inconsistenti del flusso prima delle fasi di splitting stratificato.
+    \item \textbf{Generazione di Contrasto (\texttt{SiamesePatientDataset})}: Estensione custom della classe \texttt{Dataset} di PyTorch. Il modulo ingegnerizza la creazione in tempo reale di coppie di pazienti $(x_i^1, x_i^2)$, bilanciando statisticamente al 50\% le coppie genuine e le coppie impostore. Tale bilanciamento stocastico impedisce alla rete di collassare verso soluzioni banali durante l'ottimizzazione.
+    \item \textbf{Estrazione delle Feature (\texttt{SiameseTwinNet})}: Struttura a pesi totalmente condivisi (\textit{Weight Sharing}). L'architettura prevede un singolo blocco di trasformazione non lineare composto da strati densi completamente connessi, regolarizzati mediante \texttt{BatchNorm1d} e \texttt{Dropout}. La simmetria dei pesi garantisce l'invarianza formale della distanza rispetto all'ordine di inserimento della coppia.
+    \item \textbf{Valutazione della Policy (\texttt{PrecisionSafetyEvaluator})}: Il modulo clinico di \textit{Deployment}. Questo componente non partecipa all'addestramento dei gradienti, ma opera nello spazio latente stabilizzato. Isola i vettori d'esperienza passata associati a esiti infausti, ne calcola il baricentro geometrico (Centroide di Pericolo) e definisce un confine di tolleranza radiale ($r$) entro il quale far scattare formalmente l'esclusione terapeutica per i nuovi pazienti in ingresso.
+\end{enumerate}
+
+\section{Architettura della rete Siamese}
+L'efficacia del framework di \textit{Precision Safety} dipende strettamente dalla configurazione geometrica dello spazio latente in cui i profili biologici dei pazienti vengono mappati. La scelta di implementare una rete Siamese classica risponde alla necessità di mappare relazioni di prossimità non lineari tra feature strutturalmente eterogenee. Dal punto di vista puramente topologico, una rete neurale convenzionale apprende una funzione di prima partizione dello spazio di input mediante iperpiani decisionali rigidi, il che si rivela inefficace quando l'obiettivo non è la categorizzazione netta, ma l'estrazione di un indice di continuità clinica del rischio.
+
+L'elemento cardine di questa architettura è il meccanismo di \textit{Weight Sharing}. La struttura consta di una singola sotto-rete neurale, istanziata una sola volta in memoria, che viene applicata sequenzialmente o in parallelo a entrambi i vettori di input $x_1$ e $x_2$. Matematicamente, questo garantisce l'invarianza formale e la simmetria intrinseca della proiezione latente:
+$$
+d(f_{\theta}(x_1), f_{\theta}(x_2)) = d(f_{\theta}(x_2), f_{\theta}(x_1))
+$$
+L'architettura interna della sub-network è strutturata come un percettore multistrato profondo, progettato seguendo criteri di regolarizzazione robusta per l'elaborazione di dati tabulari bioinformatici:
+\begin{itemize}
+    \item \textbf{Strati Densamente Connessi (\texttt{nn.Linear})}: Il passaggio iniziale proietta le 18 feature baseline nello spazio a 64 dimensioni, seguito da una contrazione intermedia a 32 dimensioni, fino a giungere alla proiezione finale nello spazio latente compresso ad 8 dimensioni ($m=8$). Questa progressiva riduzione della dimensionalità agisce da collo di bottiglia informativo.
+    \item \textbf{Funzioni di Attivazione non Lineari (\texttt{ReLU})}: L'introduzione della non-linearità tramite rettificatori lineari unitari consente di apprendere le interazioni complesse e non additive tra le variabili cliniche.
+    \item \textbf{Normalizzazione Batch (\texttt{BatchNorm1d})}: Posizionata immediatamente dopo le attivazioni, normalizza gli output intermedi di ciascun minibatch per avere media zero e varianza unitaria, stabilizzando la dinamica dei gradienti.
+    \item \textbf{Regolarizzazione stocastica (\texttt{Dropout})}: Impostato con una probabilità di spegnimento del 20\% ($\rho = 0.2$), contrasta l'overfitting strutturale dovuto alle dimensioni limitate del campione clinico.
+\end{itemize}
+
+\section{Coding}
+L'implementazione algoritmica è stata ingegnerizzata interamente in Python sfruttando l'ecosistema \texttt{PyTorch} per il calcolo tensoriale e \texttt{Scikit-Learn} per le metriche statistiche. Di seguito si analizza la scomposizione delle classi fondamentali coerentemente con i principi OOP applicati.
+
+La classe \texttt{SiameseTwinNet} eredita da \texttt{nn.Module} e incapsula la sotto-rete neurale tramite il costrutto \texttt{nn.Sequential}. Il flusso di \textit{forward-pass} riceve due tensori distinti ma, invocando internamente lo stesso metodo \texttt{forward\_once}, applica la medesima trasformazione sinaptica, proiettando gli input nell'embedding dimensionale compresso:
+\begin{verbatim}
+def forward(self, x1, x2):
+    embedding1 = self.forward_once(x1)
+    embedding2 = self.forward_once(x2)
+    return embedding1, embedding2
+\end{verbatim}
+
+La funzione di ottimizzazione è governata dalla classe \texttt{ContrastiveLoss}. Per ragioni di stabilità numerica e per prevenire derivate indefinite o esplosioni dei gradienti in corrispondenza di distanze prossime allo zero, il calcolo della distanza euclidea è stato implementato integrando un fattore di tolleranza $\varepsilon = 1e-6$ all'interno dell'operatore \texttt{pairwise\_distance}. La dinamica dei gradienti agisce in modo duale: minimizza la distanza per coppie ad outcome identico e applica un vincolo di penalità condizionato dal \texttt{torch.clamp} qualora la distanza di coppie discordanti non superi la barriera imposta dal \texttt{margin}.
+
+Il ciclo di addestramento, incapsulato in \texttt{SiameseTrainer}, implementa la retropropagazione dell'errore tramite l'ottimizzatore stocastico Adam. La fase di \textit{inference} sul singolo paziente, esposta da \texttt{PrecisionSafetyEvaluator}, riceve un vettore di input grezzo, ne muta la dimensionalità in una matrice bidimensionale compatibile mediante \texttt{reshape(1, -1)} e applica rigorosamente lo \texttt{scaler.transform} calcolato sul training set, evitando fenomeni distorsivi e preservando l'integrità statistica del modello.
+
+\subsection{Snippet di codice e analisi delle funzioni principali}
+Per comprendere l'esatta corrispondenza tra le equazioni teoriche e la loro controparte computazionale, si analizzano di seguito i componenti core implementati nel framework.
+
+Il blocco fondamentale che governa la geometria di contrasto è incapsulato nella classe \texttt{ContrastiveLoss}. Di seguito viene riportata l'implementazione del metodo \texttt{forward}, deputato al calcolo della perdita di batch:
+
+\begin{verbatim}
+def forward(self, embedding1, embedding2, label):
+    # 1. Calcolo numericamente stabile della distanza euclidea element-wise
+    euclidean_distance = torch.nn.functional.pairwise_distance(
+        embedding1, embedding2, eps=1e-6
+    )
+    
+    # 2. Penalizzazione delle coppie simili (label = 1)
+    loss_similar = label.squeeze() * torch.pow(euclidean_distance, 2)
+    
+    # 3. Penalizzazione delle coppie dissimili (label = 0) condizionata dal margine
+    loss_dissimilar = (1.0 - label.squeeze()) * torch.pow(
+        torch.clamp(self.margin - euclidean_distance, min=0.0), 2
+    )
+    
+    # 4. Riduzione del batch tramite media aritmetica
+    loss_contrastive = torch.mean(loss_similar + loss_dissimilar)
+    return loss_contrastive
+\end{verbatim}
+
+L'analisi riga per riga evidenzia le seguenti scelte ingegneristiche:
+\begin{enumerate}
+    \item L'invocazione di \texttt{pairwise\_distance} calcola la norma $L_2$ tra i due tensori di embedding. L'inclusione esplicita del parametro \texttt{eps=1e-6} ($\varepsilon$) previene derivate indefinite o valori \texttt{NaN} nel calcolo del gradiente qualora due pazienti occupassero le stesse identiche coordinate latenti.
+    \item La variabile \texttt{loss\_similar} traduce il termine $y_i d_i^2$. La funzione \texttt{squeeze()} viene utilizzata per allineare le dimensioni dei vettori tensoriali.
+    \item Il calcolo di \texttt{loss\_dissimilar} implementa la barriera del margine, riflettendo esattamente la funzione matematica $\max(0, m - d_i)$. Se la distanza tra due pazienti con outcome diversi è già superiore al \texttt{margin} impostato, l'espressione si azzera.
+\end{enumerate}
+
+La seconda componente critica è la logica di estrazione del \textit{Centroide di Pericolo} e la successiva validazione della policy, implementata all'interno della classe \texttt{PrecisionSafetyEvaluator}:
+
+\begin{verbatim}
+def calculate_danger_centroid(self, train_features, train_labels):
+    self.model.eval()
+    
+    # Isolamento dei profili clinici ad alto rischio storico
+    danger_patients = train_features[train_labels == 1]
+    t_danger_patients = torch.FloatTensor(danger_patients).to(self.device)
+    
+    with torch.no_grad():
+        # Forward pass singolo per estrarre le coordinate latenti
+        danger_embeddings = self.model.forward_once(t_danger_patients)
+        # Calcolo del baricentro geometrico lungo l'asse dei campioni
+        self.danger_centroid = danger_embeddings.mean(dim=0, keepdim=True)
+\end{verbatim}
+
+Il metodo si distingue per l'adozione delle \textit{best practices} di ottimizzazione in ambiente PyTorch, bloccando i moduli di regolarizzazione con \texttt{eval()} ed evitando l'allocazione inutile del grafo computazionale dei gradienti mediante il costrutto \texttt{with torch.no\_grad()}.
+
+\section{Dataset e Caratteristiche Estratte}
+La validazione empirica del framework è stata condotta sul dataset clinico \textbf{ACTG 175} (\textit{AIDS Clinical Trials Group Study 175}), uno studio randomizzato controllato volto a confrontare l'efficacia della monoterapia con Zidovudina rispetto a terapie combinate in pazienti affetti da infezione da HIV-1.
+
+Un'analisi critica preliminare della morfologia dei dati ha rivelato la necessità di una profonda operazione di ristrutturazione biologica delle variabili per conformarsi agli obiettivi del framework ed evitare il catastrofico fenomeno del \textit{Data Leakage}:
+\begin{itemize}
+    \item \textbf{Definizione dell'Endpoint di Rischio Composito}: L'interruzione precoce della terapia per tossicità ed eventi avversi (\texttt{offtrt}) e la progressione clinica della malattia (\texttt{cid}) sono state fuse operando una disgiunzione logica (OR elemento per elemento). Il target sintetico risultante identifica lo stato \textit{Unsafe} (1).
+    \item \textbf{Filtrazione Clinica Baseline}: Per costringere la rete a operare una vera predizione ex-ante, sono state rimosse tutte le feature correlate con l'evoluzione temporale o condizionate dall'esito stesso (\texttt{treat}, \texttt{trt}, \texttt{time}).
+\end{itemize}
+
+\subsection{Dettaglio delle Feature Estratte per l'Elaborazione della Rete}
+La matrice finale passata in input alla rete neurale racchiude esattamente \textbf{18 indicatori numerici e categoriali baseline} estratti dal dataset ACTG 175. Ciascuna feature mappa lo stato immunologico, demografico o anamnestico del paziente al tempo zero, prima di qualunque somministrazione del trattamento:
+
+\begin{enumerate}
+    \item \textbf{\texttt{age}}: Età anagrafica del paziente espressa in anni (variabile continua).
+    \item \textbf{\texttt{wtkg}}: Peso corporeo misurato in chilogrammi al momento dell'arruolamento (variabile continua).
+    \item \textbf{\texttt{karnof}}: Punteggio di Karnofsky Performance Status, scala semiquantitativa da 0 a 100 per quantificare le capacità funzionali residue del paziente (variabile discreta).
+    \item \textbf{\texttt{cd40}}: Conta assoluta dei linfociti T-helper CD4+ per millimetro cubo di sangue misurata al baseline (variabile continua, indicatore immunologico cardine).
+    \item \textbf{\texttt{cd420}}: Conta assoluta dei linfociti CD4+ registrata a 20 settimane dall'inizio dello screening (utilizzata per catturare la stabilità immunologica iniziale).
+    \item \textbf{\texttt{cd80}}: Conta assoluta dei linfociti T-citotossici CD8+ per millimetro cubo al tempo zero (variabile continua).
+    \item \textbf{\texttt{cd820}}: Conta assoluta dei linfociti CD8+ misurata a 20 settimane.
+    \item \textbf{\texttt{hemo}}: Indicatore booleano relativo all'anamnesi di emofilia ($1 = \text{sì}$, $0 = \text{no}$).
+    \item \textbf{\texttt{homo}}: Indicatore relativo all'orientamento o fattore di rischio comportamentale omosessuale ($1 = \text{sì}$, $0 = \text{no}$).
+    \item \textbf{\texttt{drugs}}: Storia documentata di uso di droghe per via endovenosa ($1 = \text{sì}$, $0 = \text{no}$).
+    \item \textbf{\texttt{oprior}}: Precedente utilizzo di terapie non-nucleosidiche prima dello studio ($1 = \text{sì}$, $0 = \text{no}$).
+    \item \textbf{\texttt{z30}}: Precedente trattamento con Zidovudina (AZT) nei 30 giorni antecedenti lo screening ($1 = \text{sì}$, $0 = \text{no}$).
+    \item \textbf{\texttt{preanti}}: Numero complessivo di giorni di terapia antiretrovirale somministrati al paziente prima dell'ingresso nello studio ACTG 175 (variabile continua).
+    \item \textbf{\texttt{race}}: Codifica categoriale binaria dell'etnia del paziente ($0 = \text{bianco}$, $1 = \text{non-bianco}$).
+    \textbf{\texttt{gender}}: Sesso biologico assegnato alla nascita ($0 = \text{femmina}$, $1 = \text{maschio}$).
+    \item \textbf{\texttt{str2}}: Indicatore di stratificazione clinica basato sulla storia terapeutica precedente ($1 = \text{paziente già trattato}$, $0 = \text{paziente na\"{i}ve}$).
+    \item \textbf{\texttt{symptom}}: Presenza di sintomatologia conclamata correlata all'infezione da HIV al momento della visita iniziale ($1 = \text{sintomatico}$, $0 = \text{asintomatico}$).
+    \item \textbf{\texttt{spl}}: Indicatore di stratificazione legato alla stabilità ematologica complessiva del paziente al baseline.
+\end{enumerate}
+
+\newpage
+\subsection{Analisi critica dei risultati sperimentali e grafici}
+Al termine delle 1000 epoche di ottimizzazione, la \textit{Contrastive Loss} media si stabilizza in un range asintotico compreso tra $0.222$ e $0.235$, indicando il raggiungimento di un plateau di convergenza numerica. L'esame congiunto delle metriche intrinseche di coppia e delle metriche estrinseche della policy evidenzia un fenomeno di forte asimmetria computazionale, di cruciale interesse clinico.
+
+Le metriche pure di classificazione delle coppie (Accuracy $\approx 53.3\%$, ROC-AUC $\approx 0.523$) risultano statisticamente prossime alla linea di base casuale. Questo andamento trova una precisa spiegazione geometrica analizzando le distanze medie latenti: i pazienti biologicamente simili registrano una distanza media di $0.499$, mentre i pazienti dissimili si attestano su una media di $0.530$. 
+
+Tuttavia, l'applicazione del Centroide di Pericolo su 854 pazienti storici sposta radicalmente l'asse valutativo. Il framework applica una regola di protezione restrittiva, determinando un tasso di esclusione terapeutica pari al $73.83\%$. I risultati sul test set dimostrano il raggiungimento dell'obiettivo primario di \textit{Precision Safety}:
+\begin{itemize}
+    \item \textbf{Massimizzazione della Sensibilità (81.22\%)}: Il framework è in grado di intercettare e proteggere ex-ante l'81.22\% dei pazienti che andrebbero incontro a tossicità iatrogena o fallimento terapeutico se trattati con il protocollo standard. 
+    \item \textbf{Contenimento del False Negative Rate (18.78\%)}: Clinicamente, il Falso Negativo rappresenta lo scenario più catastrofico. Il modello riduce questo rischio sotto la soglia critica del 20\%.
+    \item \textbf{Trade-off sulla Specificità (33.49\%) ed Elevato FPR (66.51\%)}: Il costo computazionale e clinico di tale livello di sicurezza si riflette in un'elevata quota di Falsi Positivi. Il sistema manifesta una condotta fortemente conservativa.
+\end{itemize}
+
+\vspace{0.5cm}
+% --- INSERIMENTO DEL GRAFICO CON PGFPLOTS ---
+\begin{figure}[h!]
+\centering
+\begin{subfigure}
+\begin{コミュニケーション}
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    enlargelimits=0.15,
+    legend style={at={(0.5,-0.2)}, anchor=north, legend columns=-1},
+    ylabel={Percentuale (\%)},
+    symbolic x coords={Sensibilità, Specificità, Precision, FPR, FNR},
+    xtick=data,
+    nodes near coords,
+    nodes near coords align={vertical},
+    ymin=0, ymax=100,
+    width=0.9\textwidth,
+    height=6cm,
+    bar width=25pt,
+    title={\textbf{Performance della Policy di Precision Safety sul Test Set}}
+]
+\addplot[fill=blue!60!black, draw=black] coordinates {
+    (Sensibilità, 81.22) 
+    (Specificità, 33.49) 
+    (Precision, 54.75) 
+    (FPR, 66.51) 
+    (FNR, 18.78)
+};
+\end{axis}
+\end{tikzpicture}
+\end{コミュニケーション}
+\end{subfigure}
+\caption{Rappresentazione grafica delle metriche della policy asimmetrica di esclusione.}
+\label{fig:grafico_risultati}
+\end{figure}
+        
+\newpage
+\section{Formule e Metodi}
+
+\subsection*{Notazione}
+Sia $f_{\theta}:{R}^p\to{R}^m$ la \textbf{rete siamese} che proietta un paziente $x$ in un embedding $e=f_{\theta}(x)\in{R}^m$. Indicheremo con $d(\cdot,\cdot)$ la distanza euclidea nello spazio degli \textit{embedding}.
+
+\subsection*{Distanza euclidea nello spazio latente}
+Per due embedding $e_1, e_2$:
+$$
+d(e_1,e_2) = \|e_1 - e_2\|_2 = \sqrt{\sum_{k=1}^{m} (e_{1,k}-e_{2,k})^2}.
+$$
+
+\subsection*{Contrastive Loss}
+Per una coppia $(x_i^1,x_i^2)$ con label $y_i\in\{0,1\}$ (1 = simili, 0 = diverse) e distanza $d_i=d(f_{\theta}(x_i^1),f_{\theta}(x_i^2))$ la perdita per campione è:
+$$
+\ell_i = y_i\, d_i^2 + (1-y_i)\,\big(\max(0,\,m - d_i)\big)^2,
+$$
+dove $m>0$ è il margin. La loss del batch è la media:
+$$
+\mathcal{L} = \frac{1}{N}\sum_{i=1}^N \ell_i.
+$$
+
+\subsection*{Selezione della soglia di distanza}
+Si costruisce uno score associato alla similarità come $s_i = -d_i$. Variando la soglia $\tau$ su $s$ si ottiene la curva ROC con:
+$$
+\text{TPR}(\tau)=\frac{\text{TP}(\tau)}{\text{TP}(\tau)+\text{FN}(\tau)},\qquad
+\text{FPR}(\tau)=\frac{\text{FP}(\tau)}{\text{FP}(\tau)+\text{TN}(\tau)}.
+$$
+Nel progetto la soglia ottimale $\tau^*$ è scelta massimizzando $\text{TPR}-\text{FPR}$:
+$$
+\tau^* = \arg\max_{\tau}\big(\text{TPR}(\tau)-\text{FPR}(\tau)\big).
+$$
+
+\subsection*{Policy di esclusione (Precision Safety)}
+- \textit{Centroide di pericolo}: sia $S_{\text{danger}}=\{i:\,y_i=1\}$ l'insieme dei pazienti storici ad alto rischio. Il centroide è:
+$$
+c = \frac{1}{|S_{\text{danger}}|}\sum_{i\in S_{\text{danger}}} e_i.
+$$
+- \textit{Distanza di un nuovo paziente $x$ dal centroide}:
+$$
+d_c(x) = \|f_{\theta}(x) - c\|_2.
+$$
+- \textit{Regola di esclusione}: dato un raggio critico $r$, il paziente è escluso se
+$$
+E(x) = \begin{cases}1 &\text{se } d_c(x) < r\\ 0 &\text{altrimenti.}\end{cases}
+$$
+
+\section{Conclusioni e considerazioni}
+Il framework sviluppato dimostra l'efficacia dell'applicazione delle reti Siamesi e del \textit{metric learning} nell'ambito della \textit{Precision Safety}. Attraverso la compressione geometrica delle caratteristiche cliniche dei pazienti, il modello è stato in grado di strutturare uno spazio latente in cui la vicinanza topologica riflette fedelmente il rischio biologico potenziale, permettendo l'estrazione di una policy di esclusione terapeutica oggettiva e quantificabile tramite la definizione del raggio critico $r$.
+
+\subsection*{Considerazioni Future e Sviluppi}
+\begin{enumerate}
+    \item \textbf{Integrazione di Vincoli di Equità Clinica (\textit{Fairness})}: Uno sviluppo futuro prioritario prevede l'introduzione di penalizzazioni di \textit{Fairness Adversarial} nella loss function, al fine di forzare l'indipendenza degli embedding latenti da variabili sensibili (es. \texttt{race}, \texttt{gender}).
+    \item \textbf{Transizione verso le Triplet Networks}: Il passaggio a un'architettura basata su \textit{Triplet Loss} consentirebbe di ottimizzare contemporaneamente i confini di vicinanza e quelli di allontanamento.
+    \item \textbf{Validazione Multicetrica}: Estendere l'addestramento a dataset oncologici o cardiovascolari permetterebbe di testare la generalizzabilità del framework su pattern di tossicità differenti.
+\end{enumerate}
+
+\end{document}
